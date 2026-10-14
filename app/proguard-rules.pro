@@ -1,0 +1,3 @@
+-keep class me.rain.themeunlock.ThemeHook { public <init>(); *; }
+-keep class * implements de.robv.android.xposed.IXposedHookLoadPackage { *; }
+-dontwarn de.robv.android.xposed.**
