@@ -1,114 +1,89 @@
 package me.rain.themeunlock;
 
 import android.util.Base64;
+import android.util.Log;
 
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import io.github.libxposed.api.XposedModule;
 
-public final class ThemeHook implements IXposedHookLoadPackage {
+public final class ThemeHook extends XposedModule {
     private static final String TARGET = "com.android.thememanager";
-    private static final String TAG = "[ThemeUnlock]";
+    private static final String TAG = "ThemeUnlock";
     private static final int MAX_ORIGINAL_LOGS = 32;
-    private static final AtomicInteger logged = new AtomicInteger();
+    private final AtomicInteger logCount = new AtomicInteger();
 
     @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) {
-        if (!TARGET.equals(loadPackageParam.packageName)) {
+    public void onPackageReady(PackageReadyParam param) {
+        if (!TARGET.equals(param.getPackageName())) {
             return;
         }
-
-        hookPurchase(loadPackageParam.classLoader);
-        hookLogin(loadPackageParam.classLoader);
-        hookVip(loadPackageParam.classLoader);
-    }
-
-    private static void hookPurchase(ClassLoader loader) {
+        ClassLoader loader = param.getClassLoader();
         try {
-            XposedHelpers.findAndHookMethod(
-                "com.android.thememanager.controller.online.PurchaseManager",
-                loader,
-                "ld6",
-                String.class,
-                String.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        // Observe the actual result before changing the caller-visible result.
-                        int index = logged.getAndIncrement();
-                        if (index < MAX_ORIGINAL_LOGS) {
-                            String original = param.hasThrowable()
-                                ? "throw:" + param.getThrowable().getClass().getName()
-                                : String.valueOf(param.getResult());
-                            if (original.length() > 4096) {
-                                original = original.substring(0, 4096);
-                            }
-                            byte[] bytes = original.getBytes(StandardCharsets.UTF_8);
-                            StringBuilder hex = new StringBuilder(bytes.length * 2);
-                            for (byte b : bytes) {
-                                int v = b & 0xFF;
-                                hex.append(Character.forDigit(v >>> 4, 16));
-                                hex.append(Character.forDigit(v & 15, 16));
-                            }
-                            XposedBridge.log(TAG + " ld6 original=" + original);
-                            XposedBridge.log(TAG + " ld6 base64="
-                                + Base64.encodeToString(bytes, Base64.NO_WRAP));
-                            XposedBridge.log(TAG + " ld6 hex=" + hex);
-                            XposedBridge.log(new Throwable(TAG + " ld6 caller stack"));
+            Method ld6 = Class.forName(
+                "com.android.thememanager.controller.online.PurchaseManager", false, loader
+            ).getDeclaredMethod("ld6", String.class, String.class);
+            hook(ld6).intercept(chain -> {
+                Object original = null;
+                Throwable error = null;
+                try {
+                    original = chain.proceed();
+                } catch (Throwable caught) {
+                    error = caught;
+                }
+                int index = logCount.getAndIncrement();
+                if (index < MAX_ORIGINAL_LOGS) {
+                    try {
+                        String value = error == null
+                            ? String.valueOf(original)
+                            : "throw:" + error.getClass().getName();
+                        if (value.length() > 4096) {
+                            value = value.substring(0, 4096);
                         }
-                        param.setResult(1);
+                        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+                        StringBuilder hex = new StringBuilder(bytes.length * 2);
+                        for (byte b : bytes) {
+                            int item = b & 0xFF;
+                            hex.append(Character.forDigit(item >>> 4, 16));
+                            hex.append(Character.forDigit(item & 15, 16));
+                        }
+                        log(Log.INFO, TAG, "ld6 original=" + value);
+                        log(Log.INFO, TAG, "ld6 base64=" + Base64.encodeToString(bytes, Base64.NO_WRAP));
+                        log(Log.INFO, TAG, "ld6 hex=" + hex);
+                        if (index == 0) {
+                            log(Log.INFO, TAG, "ld6 caller stack", new Throwable());
+                        }
+                    } catch (Throwable loggingError) {
+                        log(Log.WARN, TAG, "ld6 logging failed");
                     }
                 }
-            );
-            XposedBridge.log(TAG + " PurchaseManager.ld6(String,String) hooked");
-        } catch (Throwable error) {
-            XposedBridge.log(TAG + " ld6 hook failed");
-            XposedBridge.log(error);
+                return 1;
+            });
+            log(Log.INFO, TAG, "PurchaseManager.ld6 hooked");
+        } catch (Throwable e) {
+            log(Log.ERROR, TAG, "PurchaseManager.ld6 hook failed", e);
         }
-    }
 
-    private static void hookLogin(ClassLoader loader) {
         try {
-            XposedHelpers.findAndHookMethod(
-                "com.android.thememanager.basemodule.account.LoginManager",
-                loader,
-                "mcp",
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        param.setResult(true);
-                    }
-                }
-            );
-            XposedBridge.log(TAG + " LoginManager.mcp() hooked");
-        } catch (Throwable error) {
-            XposedBridge.log(TAG + " mcp hook failed");
-            XposedBridge.log(error);
+            Method mcp = Class.forName(
+                "com.android.thememanager.basemodule.account.LoginManager", false, loader
+            ).getDeclaredMethod("mcp");
+            hook(mcp).intercept(chain -> true);
+            log(Log.INFO, TAG, "LoginManager.mcp hooked");
+        } catch (Throwable e) {
+            log(Log.ERROR, TAG, "LoginManager.mcp hook failed", e);
         }
-    }
 
-    private static void hookVip(ClassLoader loader) {
         try {
-            XposedHelpers.findAndHookMethod(
-                "com.android.thememanager.util.jk",
-                loader,
-                "zy",
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        param.setResult(true);
-                    }
-                }
-            );
-            XposedBridge.log(TAG + " jk.zy() hooked");
-        } catch (Throwable error) {
-            XposedBridge.log(TAG + " zy hook failed");
-            XposedBridge.log(error);
+            Method zy = Class.forName(
+                "com.android.thememanager.util.jk", false, loader
+            ).getDeclaredMethod("zy");
+            hook(zy).intercept(chain -> true);
+            log(Log.INFO, TAG, "jk.zy hooked");
+        } catch (Throwable e) {
+            log(Log.ERROR, TAG, "jk.zy hook failed", e);
         }
     }
 }

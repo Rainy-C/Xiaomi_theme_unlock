@@ -14,8 +14,8 @@ android {
         applicationId = "me.rain.themeunlock"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     if (!releaseKeystore.isNullOrBlank()) {
@@ -60,7 +60,7 @@ kotlin {
 }
 
 dependencies {
-    compileOnly("de.robv.android.xposed:api:82")
+    compileOnly("io.github.libxposed:api:101.0.1")
 
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.compose.material3:material3")
